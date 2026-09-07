@@ -1,0 +1,15 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "yoxi-city-rhythm-api",
+  "main": "src/index.js",
+  "compatibility_date": "2026-09-03",
+  "compatibility_flags": ["nodejs_compat"],
+  "vars": {
+    "ALLOWED_ORIGINS": "https://yoxi-city-guide-demo.pages.dev"
+  },
+  "workers_dev": true,
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  }
+}

@@ -1,0 +1,22 @@
+# Local credentials and Cloudflare runtime state
+.dev.vars
+.env
+.env.*
+!.env.example
+.wrangler/
+
+# Dependencies and deploy output are reproducible from source
+node_modules/
+dist/
+dist.bak-*/
+package/
+*.tgz
+
+# Local backups, caches, and operating-system files
+*.bak-*
+*.log
+.DS_Store
+Thumbs.db
+
+# Local generated notes and reports
+output/

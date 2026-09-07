@@ -1,0 +1,7 @@
+# Copy this file to .dev.vars for local development. Do not commit .dev.vars.
+GEOAPIFY_SERVER_API_KEY=
+GEOAPIFY_BROWSER_KEY=
+OPENROUTER_API_KEY=
+ALLOWED_ORIGINS=
+# GEOAPIFY_BROWSER_KEY is intentionally returned to the browser. Restrict it by allowed origins in Geoapify.
+# Keep GEOAPIFY_SERVER_API_KEY and OPENROUTER_API_KEY only in Worker secrets.
