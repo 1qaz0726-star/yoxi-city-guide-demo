@@ -90,3 +90,5 @@ button:disabled{cursor:not-allowed}.primary:disabled{box-shadow:none}
 .clarification p{margin:7px 0}.clarification-actions{display:grid;gap:6px}.clarification button{font-size:12px}
 .toast{top:82px;bottom:auto;max-height:calc(100% - 150px);overflow:auto;transform:translateY(-8px)}
 @media(prefers-reduced-motion:reduce){.sheet,.sheet-summary{transition:none!important;animation:none!important;will-change:auto}}
+
+.map-message{z-index:2;display:flex;align-items:center;justify-content:center;gap:8px}.map-message span{min-width:0}.map-message button{flex:none;border:1px solid #d5e0e5;background:#fff;color:var(--navy);border-radius:8px;padding:5px 7px;font-size:10px;font-weight:700}

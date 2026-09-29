@@ -87,11 +87,61 @@ function renderFinishedBase(){state.screen="finished";const j=state.journey;show
  if($("#like"))$("#like").textContent="喜歡這次安排";
  const feedbackNote=document.createElement("p");feedbackNote.className="fine";feedbackNote.textContent="回饋只記錄在本機；下次沿用的是你選過的條件，尚未依店家回饋訓練排序。";$("#next-move").closest(".stop").before(feedbackNote);
  ["like","dislike"].forEach(v=>{if($("#"+v))$("#"+v).onclick=()=>{state.feedback=v;saveStore("yoxi.feedback",{value:v,choices:state.choices});track("recommendation_feedback",{value:v});renderFinished();};});$("#next-move").onclick=()=>track("next_move_clicked");$("#new-plan").onclick=()=>{state.stage=0;state.journey=null;state.route=null;state.places=[];state.excluded=[];state.error="";track("returned_user_opened");renderDiscover();updateMap();};}
-async function initialiseMap(){try{const configController=new AbortController();const configTimer=setTimeout(()=>configController.abort(),10000);let config;try{config=await requestJson(API_BASE+"/api/config",{signal:configController.signal});}finally{clearTimeout(configTimer);}mapProvider=config.mapProvider||config.provider||"geoapify";const key=config.googleMapsBrowserKey||config.browserApiKey;if(!key)throw new Error("尚未設定瀏覽器地圖金鑰");
- if(mapProvider==="google"){await new Promise((resolve,reject)=>{const timer=setTimeout(()=>reject(new Error("Google 地圖載入逾時")),18000);window.yoxiMapReady=()=>{clearTimeout(timer);resolve();};window.gm_authFailure=()=>{clearTimeout(timer);mapFailure("Google 金鑰或網域限制未通過，請檢查設定。");reject(new Error("Google 地圖授權失敗"));};const script=document.createElement("script");script.src="https://maps.googleapis.com/maps/api/js?key="+encodeURIComponent(key)+"&callback=yoxiMapReady&loading=async&language=zh-TW&region=TW&v=weekly";script.onerror=()=>{clearTimeout(timer);reject(new Error("Google 地圖無法載入"));};document.head.appendChild(script);});map=new google.maps.Map($("#map"),{center:state.location||FALLBACK,zoom:15,disableDefaultUI:true,zoomControl:true,gestureHandling:"greedy",clickableIcons:false});mapReady=true;$("#map-badge").textContent="Google Maps";$("#map-message").hidden=true;updateMap();}
- else{map=new maplibregl.Map({container:"map",style:"https://maps.geoapify.com/v1/styles/positron/style.json?apiKey="+encodeURIComponent(key),center:[(state.location||FALLBACK).lng,(state.location||FALLBACK).lat],zoom:15,attributionControl:false});map.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');const mapTimer=setTimeout(()=>{if(!mapReady)mapFailure("地圖載入較久，請確認網路後重新整理。");},18000);map.on("load",()=>{clearTimeout(mapTimer);mapReady=true;$("#map-message").hidden=true;$("#map-badge").textContent="Geoapify 地圖・Google 尚未啟用";updateMap();});map.on("error",()=>{clearTimeout(mapTimer);mapFailure("地圖載入失敗，請檢查網路或金鑰網域限制。");});}}
- catch(error){mapFailure(error.name==="AbortError"?"讀取地圖設定逾時，請確認網路後重試。":error.message);}}
-function mapFailure(message){$("#map-message").hidden=false;$("#map-message").textContent=message;$("#map-badge").textContent="地圖暫不可用";}
+let mapSetupVersion=0,mapConfigController,stopMapHealth,mapAutoRetries=0,mapStatus='loading';
+function setMapStatus(status){
+ mapStatus=status.state;
+ const panel=$('#map-message'),badge=$('#map-badge');
+ panel.replaceChildren();panel.hidden=status.state==='ready';
+ if(status.state==='ready'){badge.textContent=mapProvider==='google'?'Google Maps':'Geoapify 地圖・Google 尚未啟用';return;}
+ badge.textContent=status.state==='loading'?'地圖載入中':status.state==='partial'?'地圖部分資料待重試':'地圖暫不可用';
+ const text=document.createElement('span');text.textContent=status.message||'正在準備地圖…';panel.append(text);
+ if(status.state!=='loading'){const retry=document.createElement('button');retry.type='button';retry.id='retry-map';retry.textContent='重試地圖';retry.onclick=()=>initialiseMap();panel.append(retry);}
+}
+function mapFailure(message){setMapStatus({state:'unavailable',message});}
+async function initialiseMap({automatic=false}={}){
+ if(!automatic)mapAutoRetries=0;
+ const version=++mapSetupVersion;
+ mapConfigController?.abort();stopMapHealth?.();stopMapHealth=null;
+ const previousProvider=mapProvider;
+ markers.forEach(marker=>previousProvider==='google'?marker.setMap(null):marker.remove());markers=[];
+ lines.forEach(line=>line.setMap(null));lines=[];
+ if(map){if(previousProvider==='google')google.maps.event.clearInstanceListeners(map);else map.remove();}
+ map=null;mapReady=false;$('#map').replaceChildren();
+ setMapStatus({state:'loading',message:automatic?'正在重新連接地圖…':'正在準備地圖…'});
+ const configController=mapConfigController=new AbortController();
+ const configTimer=setTimeout(()=>configController.abort(),10000);
+ try{
+  let config;try{config=await requestJson(API_BASE+'/api/config',{signal:configController.signal});}finally{clearTimeout(configTimer);}
+  if(version!==mapSetupVersion)return;
+  mapProvider=config.mapProvider||config.provider||'geoapify';
+  const key=config.googleMapsBrowserKey||config.browserApiKey;
+  if(!key)throw new Error('地圖服務尚未完成設定，請稍後重試。');
+  if(mapProvider==='google'){
+   if(!window.google?.maps?.Map)await new Promise((resolve,reject)=>{
+    const script=document.createElement('script');
+    const timer=setTimeout(()=>{script.remove();reject(new Error('Google 地圖載入逾時，請確認網路後重試。'));},18000);
+    window.yoxiMapReady=()=>{clearTimeout(timer);resolve();};
+    window.gm_authFailure=()=>{clearTimeout(timer);if(version===mapSetupVersion)mapFailure('Google 地圖授權暫時無法通過，請稍後重試。');reject(new Error('Google 地圖授權暫時無法通過，請稍後重試。'));};
+    script.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(key)+'&callback=yoxiMapReady&loading=async&language=zh-TW&region=TW&v=weekly';
+    script.onerror=()=>{clearTimeout(timer);script.remove();reject(new Error('Google 地圖無法載入，請確認網路後重試。'));};document.head.appendChild(script);
+   });
+   if(version!==mapSetupVersion)return;
+   map=new google.maps.Map($('#map'),{center:state.location||FALLBACK,zoom:15,disableDefaultUI:true,zoomControl:true,gestureHandling:'greedy',clickableIcons:false});
+   mapReady=true;setMapStatus({state:'ready'});updateMap();
+  }else{
+   const instance=map=new maplibregl.Map({container:'map',style:'https://maps.geoapify.com/v1/styles/positron/style.json?apiKey='+encodeURIComponent(key),center:[(state.location||FALLBACK).lng,(state.location||FALLBACK).lat],zoom:15,attributionControl:false});
+   instance.addControl(new maplibregl.AttributionControl({compact:true}),'bottom-right');
+   stopMapHealth=YoxiMapHealth.watch(instance,{
+    onReady:()=>{if(version===mapSetupVersion){mapReady=true;updateMap();}},
+    onStatus:status=>{if(version===mapSetupVersion)setMapStatus(status);},
+    onRetry:()=>{if(version!==mapSetupVersion||mapAutoRetries>=1||navigator.onLine===false)return false;mapAutoRetries++;initialiseMap({automatic:true});return true;},
+    // Do not log request URLs: provider errors may include the browser key or map coordinates.
+    onDiagnostic:details=>console.warn('[yoxi map resource]',details)
+   });
+  }
+ }catch(error){if(version===mapSetupVersion)mapFailure(error.name==='AbortError'?'讀取地圖設定逾時，請確認網路後重試。':'地圖暫時無法載入，請確認網路後重試。');}
+}
+window.addEventListener('online',()=>{if(['partial','unavailable'].includes(mapStatus))initialiseMap();});
 function routePoints(){const g=state.route?.geometry;return g?.type==="MultiLineString"?g.coordinates.flat():g?.type==="LineString"?g.coordinates:[];}
 function updateMap(){if(!mapReady)return;markers.forEach(m=>mapProvider==="google"?m.setMap(null):m.remove());markers=[];lines.forEach(l=>l.setMap(null));lines=[];if(state.location){const all=[{location:{latitude:state.location.lat,longitude:state.location.lng},name:state.fallback?"大稻埕體驗起點":"出發點"},...state.places];all.forEach((p,i)=>{const pos={lat:p.location.latitude,lng:p.location.longitude};if(mapProvider==="google")markers.push(new google.maps.Marker({map,position:pos,title:p.name,label:i?String(i):"起"}));else markers.push(new maplibregl.Marker({color:i?"#f43d32":"#163143"}).setLngLat([pos.lng,pos.lat]).setPopup(new maplibregl.Popup().setText(p.name)).addTo(map));});}
  const points=routePoints();if(mapProvider==="google"){if(points.length)lines.push(new google.maps.Polyline({map,path:points.map(p=>({lat:p[1],lng:p[0]})),strokeColor:"#f43d32",strokeWeight:5,strokeOpacity:.9}));}else{if(map.getLayer("route"))map.removeLayer("route");if(map.getSource("route"))map.removeSource("route");if(points.length){map.addSource("route",{type:"geojson",data:state.route.geometry});map.addLayer({id:"route",type:"line",source:"route",paint:{"line-color":"#f43d32","line-width":5}});}}fitMap();}
