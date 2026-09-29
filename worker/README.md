@@ -2,6 +2,16 @@
 
 此 Worker 為「抵達後 15–120 分鐘空檔」提供真實 POI、逐段步行路線、時間驗算與預留緩衝。它不讀取行事曆或下一站，也不聲稱具有即時人潮、排隊、安靜程度或未提供的 yoxi 資料。緩衝不是準時或安全保證。
 
+## 2026-09-11 需求優化（需部署新 Worker 才生效）
+
+- `POST /api/intent` 接受 `{text,purpose?}`，text 為 1–120 字。使用既有 OpenRouter key／模型，輸出 `{intent,parser,clarification,warnings}`；沒有 key、模型逾時或 JSON 驗證失敗時只用保守明確詞句規則。不能解析時 intent 為 null。前端必須保留原文並阻擋 clarification 或非空 unsupportedConstraints，不能偷偷丟掉必要條件。
+- `intent` 白名單見 `src/intent.js`：purpose、rhythm、feeling、timeMinutes、maxWalkMinutes、maxStops、returnToOrigin、foodMode、indoorMode、excludedTypes、unsupportedConstraints。未知欄位拒絕。原文不寫入日誌或偏好；解析時文字送至 OpenRouter，不宣稱供應商零留存。
+- `/api/plan` 可傳 intent，舊 preferences 仍相容。頂層 timeMinutes／returnToOrigin 表示確認畫面最後操作；明確 maxWalkMinutes 限制每段（含返回），maxStops 限站數，excludedTypes 排除分類。foodMode meal 至少 20 分鐘停留，snack 搜尋麵包／超商類別；不自動將正餐改成小點。
+- 室內可用商場、博物館、咖啡館與超商候選，但不保證室內座位、久留或免消費。sit 代表座位必要條件，資料尚不能驗證，因此須修改或明確接受未知後才繼續。休息一般卡不代表座位保證。
+- 廁所採步行與可信度折衷：未確認便利商店的排序步行秒數加 180 秒，分數相同時地圖標示廁所優先；因此附近店家明顯更近時可作到店詢問備援。此三分鐘是可調產品規則，並非研究驗證的權重。不能把超商品牌當成廁所證據。每站 `facilityVerification` 為 `map_listed`／`unconfirmed`／null；未確認備援 `requiresStaffConfirmation: true`，`facilityNote` 明示先詢問店員、不保證如廁。單站估留 5 分鐘；回程與硬限制仍完整驗算。未具名餐廳不再拿街道地址作名稱。最多驗算 16 個候選，不代表窮盡全部附近場所。
+- 失敗分為 places_unavailable、route_unavailable、route_not_found、no_matching_places、candidates_exhausted、no_matching_purpose、meal_time_too_short、no_feasible_plan、unsupported_constraints、planning_timeout；地圖服務失敗不可提示使用者只要增加時間。
+- 回歸測試：`node --test worker/tests/*.test.mjs`。測試為 mock 供應商資料，不代替公開地點實測或使用者驗證。
+
 ## Cloudflare 設定
 
 | 名稱 | 類型 | 用途 |

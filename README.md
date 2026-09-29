@@ -1,6 +1,6 @@
 # yoxi 抵達後帶路
 
-和泰黑客松概念原型：使用者抵達陌生街區或自行到達後，以三層直覺選擇與時間預算，取得一段可完成的城市微路線。
+和泰黑客松概念原型：以手選轉盤或一句話表達當下需求，再設定時間預算，取得一段經步行路線與時間驗算的城市微路線。
 
 ## 組成
 
@@ -11,11 +11,22 @@
 ## 本機執行
 
 ```powershell
-node build.mjs
-node -e "const http=require('http'),fs=require('fs'),path=require('path');const root=process.cwd();http.createServer((req,res)=>{let p=decodeURIComponent(new URL(req.url,'http://localhost').pathname);if(p==='/')p='/index.html';const f=path.resolve(root,'.'+p);fs.readFile(f,(e,b)=>{res.writeHead(e?404:200);res.end(e?'Not found':b);});}).listen(4173)"
+node preview.mjs
 ```
 
 開啟 `http://127.0.0.1:4173`。
+
+預覽伺服器只提供公開前端資產，不提供 Worker、設定或備份檔。需測試本機 Worker 時，先啟動 8787 埠，再開啟 `http://127.0.0.1:4173/?api=http://127.0.0.1:8787`；此覆寫僅允許本機來源。
+
+部署前執行 `node build.mjs`，只上傳 `dist/`。地圖瀏覽器金鑰需允許實際使用的網域；正式網域可用不代表 localhost 也可用。
+
+## 新流程與驗證
+
+- 手選轉盤與選填的一句話可擇一使用；文字最多 120 字，解析後先顯示結構化條件。轉盤不是隨機抽籤。
+- 吃東西區分正餐／小點；室內區分避曬／需要座位，缺乏座位證據時不假裝已滿足。
+- 時間頁可設定返回原地、步行上限與站數；無法完成時顯示具體原因。
+- 完成後可沿用結構化偏好及排除條件，不儲存使用者輸入的原文。
+- 回歸測試：`node --test worker/tests/plan.test.mjs worker/tests/intent.test.mjs`。
 
 ## 金鑰
 
